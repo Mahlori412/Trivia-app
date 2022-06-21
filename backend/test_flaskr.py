@@ -1,10 +1,12 @@
 import os
+from turtle import title
 import unittest
 import json
 from flask_sqlalchemy import SQLAlchemy
 
-from flaskr import create_app
-from models import setup_db, Question, Category
+
+from flaskr import create_app, QUESTIONS_PER_PAGE
+from models import setup_db, database_user, Question
 
 
 class TriviaTestCase(unittest.TestCase):
@@ -14,18 +16,24 @@ class TriviaTestCase(unittest.TestCase):
         """Define test variables and initialize app."""
         self.app = create_app()
         self.client = self.app.test_client
-        self.database_name = "trivia"
-        self.database_path = "postgresql://{}:{}@{}/{}".format('postgres', 'Mfats', 'localhost:5432', self.database_name)
-
+        self.database_name = os.environ["DATABASE_NAME_TEST"]
+        self.database_password = os.environ["DATABASE_PASSWORD"]
+        self.database_path = "postgresql://{}:{}@{}/{}".format(
+            database_user, self.database_password, "localhost:5432", self.database_name
+        )
         setup_db(self.app, self.database_path)
+        self.new_question = {
+            'question': 'what are lymphocytes?',
+            'answer': 'white blood cell',
+            'difficulty': 5,
+            'category': 1
+        }
 
-        # binds the app to the current context
         with self.app.app_context():
             self.db = SQLAlchemy()
             self.db.init_app(self.app)
             # create all tables
             self.db.create_all()
-
     def tearDown(self):
         """Executed after reach test"""
         pass
@@ -101,19 +109,15 @@ class TriviaTestCase(unittest.TestCase):
         self.assertEqual(data['message'], 'Page not found')
 
     def test_delete_question(self):
-       
-        res = self.client().delete('/questions/1')
+        question = Question.query.first()
+        question = question.format()
+        res = self.client().delete(f"/questions/{question['id']}")
         data = json.loads(res.data)
 
-        question = Question.query.filter(
-            Question.id == 8).one_or_none()
-
         self.assertEqual(res.status_code, 200)
-        self.assertEqual(data['success'], True)
-        self.assertEqual(data['deleted'], 1)
-        self.assertEqual(data['total_questions'])
-        self.assertEqual(len(data['questions']))
-        self.assertEqual(question, None)
+        self.assertEqual(data["success"], True)
+        self.assertEqual(data["deleted"], question['id'])
+        self.assertTrue(data["total_questions"])
 
     def test_422_sent_deleting_non_existing_question(self):
         res = self.client().delete('/questions/1000')
@@ -134,14 +138,12 @@ class TriviaTestCase(unittest.TestCase):
         self.assertIsNotNone(data['total_questions'])
 
     def test_get_question_search_without_results(self):
-        search = {'searchTerm': 'title'}
-        res = self.client().post('/questions/search', json=search)
+        res = self.client().post('/api/questions/search')
         data = json.loads(res.data)
-        
-        self.assertEqual(res.status_code, 200)
-        self.assertEqual(data['success'], True)
-        self.assertEqual(len(data['questions']), 0)
-        self.assertEqual(data['total_questions'], 0)
+
+        self.assertEqual(res.status_code, 404)
+        self.assertEqual(data['success'], False)
+        self.assertEqual(data['message'], 'Page not found')
         
 
     def test_get_questions_by_category(self):
